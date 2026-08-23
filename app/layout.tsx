@@ -25,11 +25,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
-      <body className="bg-[#FBF9F5] text-[#1C1917] antialiased">
+      <body className="bg-white text-[#171717] antialiased min-h-screen m-0">
         <AuthProvider>
-          <main className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
-            {children}
-          </main>
+          <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6">
+            <main className="w-full max-w-xl mx-auto flex flex-col items-center justify-center">
+              {children}
+            </main>
+          </div>
         </AuthProvider>
       </body>
     </html>
