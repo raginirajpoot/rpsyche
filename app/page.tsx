@@ -29,6 +29,7 @@ interface Circle {
 export default function Home() {
   const { user, login, logout } = useAuth();
   
+  // Strict admin check
   const isAdmin = Boolean(
     user?.email && user.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()
   );
@@ -161,7 +162,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Landing / Dashboard */}
+      {/* Main View */}
       {!user ? (
         <div className="text-center py-20 space-y-4">
           <Feather className="mx-auto text-stone-400" size={32} />
@@ -196,6 +197,7 @@ export default function Home() {
                 Join with Code
               </button>
 
+              {/* ONLY ADMIN SEES NEW CIRCLE BUTTON */}
               {isAdmin && (
                 <button
                   onClick={() => { setIsCreateOpen(true); setIsJoinOpen(false); setErrorMsg(""); }}
@@ -207,6 +209,7 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Admin Circle Creation Form */}
           {isAdmin && isCreateOpen && (
             <form onSubmit={handleCreateCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Create New Circle</h3>
@@ -244,6 +247,7 @@ export default function Home() {
             </form>
           )}
 
+          {/* Member Join Form */}
           {isJoinOpen && (
             <form onSubmit={handleJoinCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Enter Invite Code</h3>
@@ -274,6 +278,7 @@ export default function Home() {
             </form>
           )}
 
+          {/* Circle Cards List */}
           {loading ? (
             <div className="text-center py-12 text-xs text-stone-400 font-serif italic">
               Loading circles...
