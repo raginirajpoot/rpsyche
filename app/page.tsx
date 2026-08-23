@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
 import { 
   collection, 
   query, 
@@ -10,215 +10,313 @@ import {
   onSnapshot, 
   addDoc, 
   getDocs, 
-  setDoc, 
-  doc 
+  updateDoc, 
+  arrayUnion 
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { Feather, ArrowRight, LogOut, Copy, Check, Plus, KeyRound } from "lucide-react";
+import Link from "next/link";
+import { Feather, Plus, Users, ArrowRight, LogIn, LogOut } from "lucide-react";
 
-export default function StartPage() {
-  const { user, loading, signInWithGoogle, signOut } = useAuth();
-  const router = useRouter();
+const ADMIN_EMAIL = "raginirajpoot13@gmail.com";
 
-  const [circles, setCircles] = useState<any[]>([]);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+interface Circle {
+  id: string;
+  name: string;
+  description?: string;
+  inviteCode: string;
+  members: string[];
+}
 
-  // Form states
-  const [newCircleName, setNewCircleName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [showJoin, setShowJoin] = useState(false);
+export default function Home() {
+  const { user, login, logout } = useAuth();
+  
+  const isAdmin = Boolean(
+    user?.email && user.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()
+  );
 
-  // Load circles
+  const [circles, setCircles] = useState<Circle[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [circleName, setCircleName] = useState("");
+  const [circleDesc, setCircleDesc] = useState("");
+  const [inviteCodeInput, setInviteCodeInput] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  const handleLogin = async () => {
+    setAuthError("");
+    try {
+      await login();
+    } catch (err: any) {
+      setAuthError(err?.message || "Sign in failed. Please try again.");
+    }
+  };
+
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, "circles"), where("members", "array-contains", user.uid));
-    return onSnapshot(q, (snap) => {
-      setCircles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    if (!user) {
+      setCircles([]);
+      setLoading(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, "circles"),
+      where("members", "array-contains", user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetched: Circle[] = [];
+        snapshot.forEach((doc) => {
+          fetched.push({ id: doc.id, ...doc.data() } as Circle);
+        });
+        setCircles(fetched);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching circles:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, [user]);
 
   const handleCreateCircle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCircleName.trim() || !user) return;
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const docRef = await addDoc(collection(db, "circles"), {
-      name: newCircleName.trim(),
-      inviteCode: code,
-      createdBy: user.uid,
-      members: [user.uid],
-      createdAt: new Date(),
-    });
-    setNewCircleName("");
-    setShowCreate(false);
-    router.push(`/circle/${docRef.id}`);
+    if (!isAdmin || !user || !circleName.trim()) return;
+
+    try {
+      const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      await addDoc(collection(db, "circles"), {
+        name: circleName.trim(),
+        description: circleDesc.trim(),
+        inviteCode: randomCode,
+        createdBy: user.uid,
+        members: [user.uid],
+        createdAt: new Date(),
+      });
+      setCircleName("");
+      setCircleDesc("");
+      setIsCreateOpen(false);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to create circle");
+    }
   };
 
   const handleJoinCircle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!joinCode.trim() || !user) return;
-    const q = query(collection(db, "circles"), where("inviteCode", "==", joinCode.trim().toUpperCase()));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const circleDoc = snap.docs[0];
-      const members = circleDoc.data().members || [];
-      if (!members.includes(user.uid)) {
-        await setDoc(doc(db, "circles", circleDoc.id), { members: [...members, user.uid] }, { merge: true });
+    if (!user || !inviteCodeInput.trim()) return;
+    setErrorMsg("");
+
+    try {
+      const q = query(
+        collection(db, "circles"),
+        where("inviteCode", "==", inviteCodeInput.trim().toUpperCase())
+      );
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        setErrorMsg("No circle found with that code.");
+        return;
       }
-      setJoinCode("");
-      setShowJoin(false);
-      router.push(`/circle/${circleDoc.id}`);
-    } else {
-      alert("Invalid invite code");
+
+      const targetDoc = snap.docs[0];
+      await updateDoc(targetDoc.ref, {
+        members: arrayUnion(user.uid),
+      });
+
+      setInviteCodeInput("");
+      setIsJoinOpen(false);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to join circle");
     }
   };
 
-  if (loading) {
-    return <div className="p-12 text-center text-stone-500 font-serif">Opening notebook...</div>;
-  }
-
-  // 1. PUBLIC START / LANDING PAGE
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center pt-20 space-y-8">
-        <div className="space-y-3">
-          <div className="flex items-center justify-center gap-2 text-[#C25E3E] mb-2">
-            <Feather size={26} />
-            <span className="font-serif text-2xl font-semibold">rpsyche</span>
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-serif tracking-tight text-[#1C1917]">
-            A quiet space for genuine thoughts.
-          </h1>
-          <p className="text-stone-500 text-base max-w-sm mx-auto leading-relaxed pt-2">
-            One shared prompt. Blind responses. Everything revealed together.
-          </p>
-        </div>
-
-        <button
-          onClick={signInWithGoogle}
-          className="w-full max-w-xs flex items-center justify-center gap-3 bg-[#1C1917] text-[#FBF9F5] py-3.5 px-6 rounded-xl hover:opacity-90 transition active:scale-[0.99] font-medium text-sm shadow-md"
-        >
-          Get Started with Google
-          <ArrowRight size={16} />
-        </button>
-      </div>
-    );
-  }
-
-  // 2. AUTHENTICATED DASHBOARD
   return (
-    <div className="space-y-8 pb-16">
-      <header className="flex justify-between items-baseline border-b border-stone-200 pb-4">
+    <div className="space-y-12 max-w-2xl mx-auto py-8">
+      {/* Top Header */}
+      <header className="flex justify-between items-center border-b border-stone-200/80 pb-6">
         <div>
-          <span className="text-[#C25E3E] text-xs font-semibold tracking-wider uppercase block">rpsyche</span>
-          <h2 className="text-2xl font-serif text-[#1C1917]">
-            Welcome, {user.displayName?.split(" ")[0]}
-          </h2>
+          <h1 className="font-serif text-3xl tracking-tight text-[#1C1917]">rpsyche</h1>
+          <p className="text-xs text-stone-500 font-serif italic mt-0.5">A shared journal for close minds</p>
         </div>
-        <button
-          onClick={signOut}
-          className="text-xs text-stone-500 hover:text-stone-800 flex items-center gap-1.5 transition"
-        >
-          <LogOut size={14} /> Sign out
-        </button>
-      </header>
 
-      {/* Circle Actions */}
-      <div className="flex justify-between items-center">
-        <h3 className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
-          Your Circles ({circles.length})
-        </h3>
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setShowCreate(!showCreate); setShowJoin(false); }}
-            className="text-xs flex items-center gap-1 bg-[#1C1917] text-white px-3 py-1.5 rounded-lg"
-          >
-            <Plus size={13} /> Create
-          </button>
-          <button
-            onClick={() => { setShowJoin(!showJoin); setShowCreate(false); }}
-            className="text-xs flex items-center gap-1 bg-stone-200 text-stone-800 px-3 py-1.5 rounded-lg"
-          >
-            <KeyRound size={13} /> Join
-          </button>
-        </div>
-      </div>
-
-      {/* Create Form */}
-      {showCreate && (
-        <form onSubmit={handleCreateCircle} className="bg-white border p-4 rounded-xl space-y-2">
-          <input
-            type="text"
-            placeholder="Circle Name (e.g. Sunday Reflections)"
-            value={newCircleName}
-            onChange={(e) => setNewCircleName(e.target.value)}
-            className="w-full text-xs p-2.5 border rounded-lg focus:outline-none"
-            required
-            autoFocus
-          />
-          <button type="submit" className="text-xs bg-[#C25E3E] text-white px-4 py-2 rounded-lg font-medium">
-            Create & Enter
-          </button>
-        </form>
-      )}
-
-      {/* Join Form */}
-      {showJoin && (
-        <form onSubmit={handleJoinCircle} className="bg-white border p-4 rounded-xl space-y-2">
-          <input
-            type="text"
-            placeholder="6-Character Code"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            maxLength={6}
-            className="w-full text-xs p-2.5 border rounded-lg font-mono uppercase focus:outline-none"
-            required
-            autoFocus
-          />
-          <button type="submit" className="text-xs bg-stone-800 text-white px-4 py-2 rounded-lg font-medium">
-            Join & Enter
-          </button>
-        </form>
-      )}
-
-      {/* Circle Cards */}
-      {circles.length === 0 ? (
-        <div className="border border-dashed p-10 rounded-2xl text-center text-stone-500 font-serif text-sm">
-          You are not in any circles yet. Create or join one above!
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          {circles.map((c) => (
-            <div
-              key={c.id}
-              className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm flex justify-between items-center"
-            >
-              <div className="space-y-1">
-                <h4 className="font-serif text-lg text-stone-900 font-medium">{c.name}</h4>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(c.inviteCode);
-                    setCopiedCode(c.inviteCode);
-                    setTimeout(() => setCopiedCode(null), 2000);
-                  }}
-                  className="text-xs text-stone-500 flex items-center gap-1 font-mono hover:text-stone-800"
-                >
-                  {copiedCode === c.inviteCode ? (
-                    <><Check size={12} className="text-green-600" /> Copied</>
-                  ) : (
-                    <><Copy size={12} /> Code: {c.inviteCode}</>
-                  )}
-                </button>
-              </div>
-
+        <div>
+          {user && (
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-stone-600">
+                {user.displayName || user.email}
+              </span>
               <button
-                onClick={() => router.push(`/circle/${c.id}`)}
-                className="bg-[#1C1917] text-white text-xs px-4 py-2 rounded-xl hover:opacity-90 font-medium"
+                onClick={logout}
+                className="text-xs text-stone-400 hover:text-stone-700 flex items-center gap-1 transition"
               >
-                Open Circle →
+                <LogOut size={13} /> Exit
               </button>
             </div>
-          ))}
+          )}
+        </div>
+      </header>
+
+      {/* Main Landing / Dashboard */}
+      {!user ? (
+        <div className="text-center py-20 space-y-4">
+          <Feather className="mx-auto text-stone-400" size={32} />
+          <h2 className="font-serif text-2xl text-stone-800">Your quiet writing room awaits</h2>
+          <p className="text-xs text-stone-500 max-w-sm mx-auto leading-relaxed">
+            Join a private circle to write answers to prompts blindly, revealing entries together when everyone finishes.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={handleLogin}
+              className="inline-flex items-center gap-2 bg-[#1C1917] text-[#FBF9F5] text-xs px-5 py-2.5 rounded-xl hover:opacity-90 transition font-medium"
+            >
+              <LogIn size={14} /> Sign In with Google
+            </button>
+          </div>
+          {authError && (
+            <p className="text-xs text-red-500 max-w-sm mx-auto pt-2">
+              {authError}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-serif text-2xl text-[#1C1917]">Your Circles</h2>
+            
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setIsJoinOpen(true); setIsCreateOpen(false); setErrorMsg(""); }}
+                className="text-xs border border-stone-300 px-3.5 py-2 rounded-xl text-stone-700 hover:bg-stone-50 transition"
+              >
+                Join with Code
+              </button>
+
+              {isAdmin && (
+                <button
+                  onClick={() => { setIsCreateOpen(true); setIsJoinOpen(false); setErrorMsg(""); }}
+                  className="text-xs bg-[#1C1917] text-[#FBF9F5] px-3.5 py-2 rounded-xl hover:opacity-90 flex items-center gap-1.5 font-medium transition"
+                >
+                  <Plus size={14} /> New Circle
+                </button>
+              )}
+            </div>
+          </div>
+
+          {isAdmin && isCreateOpen && (
+            <form onSubmit={handleCreateCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
+              <h3 className="font-serif text-base font-semibold text-stone-800">Create New Circle</h3>
+              <input
+                type="text"
+                placeholder="Circle Name (e.g. Sunday Folio)"
+                value={circleName}
+                onChange={(e) => setCircleName(e.target.value)}
+                required
+                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#C25E3E]"
+              />
+              <textarea
+                placeholder="Description / Purpose (optional)"
+                value={circleDesc}
+                onChange={(e) => setCircleDesc(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#C25E3E] resize-none"
+              />
+              {errorMsg && <p className="text-[11px] text-red-500">{errorMsg}</p>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="px-3 py-1.5 text-xs text-stone-500 hover:text-stone-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs bg-[#1C1917] text-[#FBF9F5] rounded-xl hover:opacity-90 font-medium"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          )}
+
+          {isJoinOpen && (
+            <form onSubmit={handleJoinCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
+              <h3 className="font-serif text-base font-semibold text-stone-800">Enter Invite Code</h3>
+              <input
+                type="text"
+                placeholder="6-character code (e.g. A9B2X1)"
+                value={inviteCodeInput}
+                onChange={(e) => setInviteCodeInput(e.target.value)}
+                required
+                className="w-full px-3 py-2 text-xs uppercase font-mono tracking-wider rounded-xl border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#C25E3E]"
+              />
+              {errorMsg && <p className="text-[11px] text-red-500">{errorMsg}</p>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsJoinOpen(false)}
+                  className="px-3 py-1.5 text-xs text-stone-500 hover:text-stone-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs bg-[#1C1917] text-[#FBF9F5] rounded-xl hover:opacity-90 font-medium"
+                >
+                  Join
+                </button>
+              </div>
+            </form>
+          )}
+
+          {loading ? (
+            <div className="text-center py-12 text-xs text-stone-400 font-serif italic">
+              Loading circles...
+            </div>
+          ) : circles.length === 0 ? (
+            <div className="border border-dashed border-stone-300 rounded-2xl p-8 text-center bg-white/40 space-y-2">
+              <p className="font-serif text-stone-600">You are not in any circles yet.</p>
+              <p className="text-xs text-stone-400">Ask your circle host for their 6-digit invite code.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {circles.map((c) => (
+                <div
+                  key={c.id}
+                  className="bg-white border border-stone-200 rounded-2xl p-5 hover:border-stone-400 transition space-y-3 shadow-sm"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-serif text-lg font-semibold text-[#1C1917]">{c.name}</h3>
+                      {c.description && (
+                        <p className="text-xs text-stone-500 mt-0.5">{c.description}</p>
+                      )}
+                    </div>
+                    <span className="text-[11px] font-mono text-stone-400 bg-stone-100 px-2 py-0.5 rounded-md">
+                      {c.inviteCode}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-stone-100 text-xs">
+                    <span className="flex items-center gap-1 text-stone-400">
+                      <Users size={13} /> {c.members?.length || 1} member{c.members?.length === 1 ? "" : "s"}
+                    </span>
+                    <Link
+                      href={`/circle/${c.id}`}
+                      className="inline-flex items-center gap-1 text-[#C25E3E] font-medium hover:underline"
+                    >
+                      Open Circle <ArrowRight size={13} />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
