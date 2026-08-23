@@ -28,7 +28,7 @@ import {
   MessageSquareQuote, 
   Edit3, 
   Clock, 
-  AlertTriangle 
+  Check 
 } from "lucide-react";
 
 interface Circle {
@@ -65,7 +65,8 @@ interface Annotation {
 }
 
 export default function CirclePage() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : null;
   const router = useRouter();
   const { user } = useAuth();
 
@@ -74,17 +75,19 @@ export default function CirclePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [isWindowExpired, setIsWindowExpired] = useState(false);
+  const [loadingCircle, setLoadingCircle] = useState(true);
+  const [circleNotFound, setCircleNotFound] = useState(false);
   
   // Annotation state
   const [selectedText, setSelectedText] = useState("");
   const [annotatingEntryId, setAnnotatingEntryId] = useState<string | null>(null);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
 
-  // User private drafting state
+  // Author drafting & editing state
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isEditingAfterSubmit, setIsEditingAfterSubmit] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   
   // Topic creation state
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
@@ -96,10 +99,19 @@ export default function CirclePage() {
   useEffect(() => {
     if (!id) return;
     const fetchCircle = async () => {
-      const docRef = doc(db, "circles", id as string);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        setCircle(snap.data() as Circle);
+      try {
+        const docRef = doc(db, "circles", id);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          setCircle(snap.data() as Circle);
+        } else {
+          setCircleNotFound(true);
+        }
+      } catch (err) {
+        console.error("Error loading circle:", err);
+        setCircleNotFound(true);
+      } finally {
+        setLoadingCircle(false);
       }
     };
     fetchCircle();
@@ -120,7 +132,6 @@ export default function CirclePage() {
         const current = allTopics[0];
         setActiveTopic(current);
 
-        // Check if 1-hour window has already passed
         if (current.deadline) {
           const deadlineMs = current.deadline?.toDate ? current.deadline.toDate().getTime() : new Date(current.deadline).getTime();
           setIsWindowExpired(Date.now() > deadlineMs);
@@ -177,7 +188,6 @@ export default function CirclePage() {
     if (!newPrompt.trim() || !id) return;
 
     const now = new Date();
-    // Exactly 60 minutes from now
     const oneHourDeadline = new Date(now.getTime() + 60 * 60 * 1000);
 
     await addDoc(collection(db, "topics"), {
@@ -194,9 +204,9 @@ export default function CirclePage() {
     setIsCreatingTopic(false);
   };
 
-  // Save / Submit Entry
+  // Save / Submit / Update Entry
   const handleSaveEntry = async (submit: boolean = false) => {
-    if (!activeTopic || !user || isWindowExpired) return;
+    if (!activeTopic || !user) return;
     setSaving(true);
 
     const entryId = `${activeTopic.id}_${user.uid}`;
@@ -214,8 +224,8 @@ export default function CirclePage() {
     await setDoc(doc(db, "entries", entryId), entryData, { merge: true });
     if (submit) {
       setIsSubmitted(true);
-      setIsEditingAfterSubmit(false);
     }
+    setIsEditing(false);
     setSaving(false);
   };
 
@@ -225,10 +235,25 @@ export default function CirclePage() {
     await updateDoc(doc(db, "topics", activeTopic.id), { isRevealed: true });
   };
 
-  if (!circle) {
+  if (loadingCircle) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <span className="italic text-stone-500 font-serif">Opening circle...</span>
+      <div className="flex flex-col items-center justify-center h-64 space-y-3">
+        <span className="italic text-stone-500 font-serif text-lg">Opening circle...</span>
+      </div>
+    );
+  }
+
+  if (circleNotFound || !circle) {
+    return (
+      <div className="text-center py-16 space-y-4">
+        <h2 className="font-serif text-2xl text-stone-800">Circle not found</h2>
+        <p className="text-xs text-stone-500">This circle may have been removed or the link is invalid.</p>
+        <button
+          onClick={() => router.push("/")}
+          className="text-xs bg-[#1C1917] text-[#FBF9F5] px-4 py-2 rounded-xl"
+        >
+          Return Home
+        </button>
       </div>
     );
   }
@@ -276,7 +301,7 @@ export default function CirclePage() {
           <div className="space-y-1">
             <h3 className="font-serif text-lg text-stone-700">No active prompt</h3>
             <p className="text-xs text-stone-500 max-w-xs mx-auto">
-              Pose a question. Circle members have exactly 1 hour to write their thoughts.
+              Pose a question. Circle members have 1 hour to write their thoughts.
             </p>
           </div>
           <button
@@ -374,7 +399,7 @@ export default function CirclePage() {
 
             <div className="pt-2 flex justify-between items-center border-t border-stone-200/60 text-xs">
               <span className="text-stone-500 italic">
-                {isWindowExpired ? "1-Hour writing window has closed." : "1-Hour rapid writing window in progress."}
+                {isWindowExpired ? "1-Hour initial window has passed." : "1-Hour rapid writing window in progress."}
               </span>
               {!isRevealed && (
                 <button
@@ -387,29 +412,16 @@ export default function CirclePage() {
             </div>
           </div>
 
-          {/* WRITING WINDOW EXPIRED & NOT SUBMITTED */}
-          {isWindowExpired && !isSubmitted && !isRevealed && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center space-y-2">
-              <AlertTriangle size={24} className="mx-auto text-amber-700" />
-              <h3 className="font-serif text-base text-amber-950 font-medium">
-                The 1-hour writing window has closed
-              </h3>
-              <p className="text-xs text-amber-800 max-w-sm mx-auto">
-                The timer for this prompt expired. You will be able to read everyone's thoughts as soon as they are revealed!
-              </p>
-            </div>
-          )}
-
-          {/* ACTIVE WRITING DESK (ONLY WITHIN THE 1-HOUR WINDOW) */}
-          {!isWindowExpired && (!isSubmitted || isEditingAfterSubmit) && (
+          {/* ACTIVE EDITING / WRITING DESK */}
+          {(!isSubmitted || isEditing) && (
             <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
               <div className="flex justify-between items-center pb-2 border-b border-stone-100">
                 <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                  Your Notebook Page (1-Hr Window Active)
+                  {isSubmitted ? "Editing Your Entry" : "Your Notebook Page"}
                 </span>
                 {isSubmitted && (
                   <button
-                    onClick={() => setIsEditingAfterSubmit(false)}
+                    onClick={() => setIsEditing(false)}
                     className="text-xs text-stone-500 hover:text-stone-800"
                   >
                     Cancel Editing
@@ -429,7 +441,7 @@ export default function CirclePage() {
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write your instinctive reaction... (nobody can see this until revealed)"
+                  placeholder="Write your instinctive reaction..."
                   rows={8}
                   className="w-full text-sm leading-relaxed border-none focus:outline-none resize-none placeholder:text-stone-300 placeholder:italic"
                 />
@@ -449,7 +461,8 @@ export default function CirclePage() {
                       disabled={saving || !content.trim()}
                       className="flex items-center gap-1.5 bg-[#1C1917] text-[#FBF9F5] px-4 py-2 rounded-xl hover:opacity-90 transition font-medium disabled:opacity-50"
                     >
-                      <Send size={12} /> {isSubmitted ? "Update Submission" : "Submit"}
+                      {isSubmitted ? <Check size={13} /> : <Send size={12} />} 
+                      {isSubmitted ? "Save Changes" : "Submit"}
                     </button>
                   </div>
                 </div>
@@ -457,28 +470,26 @@ export default function CirclePage() {
             </div>
           )}
 
-          {/* SUBMITTED CONFIRMATION */}
-          {isSubmitted && !isEditingAfterSubmit && (
+          {/* SUBMITTED PREVIEW */}
+          {isSubmitted && !isEditing && !isRevealed && (
             <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
               <div className="py-4 text-center space-y-2">
                 <CheckCircle2 size={32} className="mx-auto text-green-600" />
-                <h3 className="font-serif text-lg text-[#1C1917]">Your entry is submitted!</h3>
+                <h3 className="font-serif text-lg text-[#1C1917]">Your entry is recorded</h3>
                 <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                  Your entry is locked in. It will be viewable when the responses are revealed.
+                  It will be revealed alongside the group once the circle is ready.
                 </p>
-                {!isRevealed && !isWindowExpired && (
-                  <button
-                    onClick={() => setIsEditingAfterSubmit(true)}
-                    className="inline-flex items-center gap-1.5 text-xs text-[#C25E3E] hover:underline pt-2 font-medium"
-                  >
-                    <Edit3 size={13} /> Edit response while timer is ticking
-                  </button>
-                )}
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="inline-flex items-center gap-1.5 text-xs text-[#C25E3E] hover:underline pt-2 font-medium"
+                >
+                  <Edit3 size={13} /> Edit your entry
+                </button>
               </div>
 
               <div className="pt-4 border-t border-stone-100 text-left">
                 <span className="text-[11px] uppercase tracking-wider text-stone-400 block mb-1 font-semibold">
-                  Your submission:
+                  Your current submission:
                 </span>
                 <h4 className="font-serif font-semibold text-stone-800">{title || "Untitled"}</h4>
                 <p className="text-xs text-stone-600 mt-2 line-clamp-4 italic whitespace-pre-wrap">"{content}"</p>
@@ -486,7 +497,7 @@ export default function CirclePage() {
             </div>
           )}
 
-          {/* REVEALED ENTRIES (ALWAYS PERMANENTLY VIEWABLE) */}
+          {/* REVEALED ENTRIES */}
           {isRevealed && (
             <div className="space-y-6 pt-4">
               <div className="flex items-baseline justify-between border-b border-stone-200 pb-2">
@@ -499,17 +510,43 @@ export default function CirclePage() {
               <div className="space-y-6">
                 {entries.map((entry) => {
                   const entryNotes = annotations.filter((n) => n.entryId === entry.id);
+                  const isAuthor = entry.userId === user?.uid;
 
                   return (
                     <div
                       key={entry.id}
-                      className="bg-white border border-stone-200 rounded-2xl p-6 space-y-4 shadow-sm"
+                      className={`bg-white border rounded-2xl p-6 space-y-4 shadow-sm transition ${
+                        isAuthor ? "border-amber-200 ring-1 ring-amber-100" : "border-stone-200"
+                      }`}
                     >
                       <div className="flex justify-between items-baseline border-b border-stone-100 pb-2">
-                        <h4 className="font-serif text-lg font-semibold text-[#1C1917]">
-                          {entry.title || "Untitled Thought"}
-                        </h4>
-                        <span className="text-xs text-stone-400">by {entry.userName}</span>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-serif text-lg font-semibold text-[#1C1917]">
+                            {entry.title || "Untitled Thought"}
+                          </h4>
+                          {isAuthor && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                              Your Piece
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-stone-400">by {entry.userName}</span>
+                          {isAuthor && (
+                            <button
+                              onClick={() => {
+                                setTitle(entry.title);
+                                setContent(entry.content);
+                                setIsEditing(true);
+                                window.scrollTo({ top: 300, behavior: "smooth" });
+                              }}
+                              className="text-xs text-[#C25E3E] hover:underline flex items-center gap-1 font-medium"
+                            >
+                              <Edit3 size={12} /> Edit
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div
