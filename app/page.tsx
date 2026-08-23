@@ -29,9 +29,8 @@ interface Circle {
 export default function Home() {
   const { user, login, logout } = useAuth();
 
-  // Strict check: only true if email matches exactly
-  const userEmail = (user?.email || "").toLowerCase().trim();
-  const isAdmin = Boolean(userEmail && userEmail === ADMIN_EMAIL.toLowerCase().trim());
+  const currentEmail = (user?.email || "").toLowerCase().trim();
+  const isAdmin = currentEmail !== "" && currentEmail === ADMIN_EMAIL.toLowerCase().trim();
 
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,7 +136,7 @@ export default function Home() {
 
   return (
     <div className="space-y-12 max-w-2xl mx-auto py-8">
-      {/* Header */}
+      {/* Top Header */}
       <header className="flex justify-between items-center border-b border-stone-200/80 pb-6">
         <div>
           <h1 className="font-serif text-3xl tracking-tight text-[#1C1917]">rpsyche</h1>
@@ -147,8 +146,8 @@ export default function Home() {
         <div>
           {user && (
             <div className="flex items-center gap-3">
-              <span className="text-xs text-stone-600">
-                {user.email} {isAdmin ? "(Admin)" : "(Member)"}
+              <span className="text-xs text-stone-600 font-mono bg-stone-100 px-2 py-1 rounded">
+                {user.email} &bull; {isAdmin ? "ADMIN" : "MEMBER"}
               </span>
               <button
                 onClick={logout}
@@ -161,6 +160,7 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Main Landing / Dashboard */}
       {!user ? (
         <div className="text-center py-20 space-y-4">
           <Feather className="mx-auto text-stone-400" size={32} />
@@ -195,20 +195,20 @@ export default function Home() {
                 Join with Code
               </button>
 
-              {/* STRICT ADMIN ONLY BUTTON */}
-              {isAdmin && (
+              {/* Strict render: true ONLY for raginirajpoot13@gmail.com */}
+              {user?.email?.toLowerCase().trim() === "raginirajpoot13@gmail.com" ? (
                 <button
                   onClick={() => { setIsCreateOpen(true); setIsJoinOpen(false); setErrorMsg(""); }}
                   className="text-xs bg-[#1C1917] text-[#FBF9F5] px-3.5 py-2 rounded-xl hover:opacity-90 flex items-center gap-1.5 font-medium transition"
                 >
                   <Plus size={14} /> New Circle
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
 
           {/* Admin Form */}
-          {isAdmin && isCreateOpen && (
+          {user?.email?.toLowerCase().trim() === "raginirajpoot13@gmail.com" && isCreateOpen && (
             <form onSubmit={handleCreateCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Create New Circle</h3>
               <input
