@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Caveat } from "next/font/google";
+import { Cormorant_Garamond, Plus_Jakarta_Sans } from "next/font/google";
 import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-serif",
+});
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
-const caveat = Caveat({
-  subsets: ["latin"],
-  variable: "--font-handwritten",
-});
-
 export const metadata: Metadata = {
   title: "rpsyche",
-  description: "A private notebook shared with your circle.",
+  description: "A shared literary and psychological notebook for close circles.",
 };
 
 export default function RootLayout({
@@ -24,10 +25,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${jakarta.variable} ${caveat.variable}`}>
+    <html lang="en" className={`${cormorant.variable} ${jakarta.variable}`}>
       <body className="min-h-screen bg-[#FBF9F5] text-[#1C1917] font-sans antialiased">
         <AuthProvider>
-          <main className="max-w-xl mx-auto px-6 py-12">{children}</main>
+          <main className="max-w-2xl mx-auto px-6 py-12">
+            {children}
+          </main>
         </AuthProvider>
       </body>
     </html>
