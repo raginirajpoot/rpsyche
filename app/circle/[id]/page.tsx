@@ -15,8 +15,8 @@ import {
   updateDoc 
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import AnnotationModal from "../../components/AnnotationModal";
-import { ArrowLeft, Feather, Plus, Lock, CheckCircle2, Sparkles, Send, MessageSquareQuote } from "lucide-react";
+import AnnotationModal from "@/app/components/AnnotationModal";
+import { ArrowLeft, Feather, Plus, Lock, CheckCircle2, Sparkles, Send, MessageSquareQuote, Edit3 } from "lucide-react";
 
 interface Circle {
   name: string;
@@ -29,7 +29,7 @@ interface Topic {
   id: string;
   prompt: string;
   description?: string;
-  isRevealed: boolean;
+  isRevealed?: boolean;
   createdAt: any;
 }
 
@@ -60,19 +60,18 @@ export default function CirclePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   
-  // Highlighting & Note popup state
+  // Annotation state
   const [selectedText, setSelectedText] = useState("");
   const [annotatingEntryId, setAnnotatingEntryId] = useState<string | null>(null);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
 
-  // Writing state
-  const [myEntry, setMyEntry] = useState<Entry>({
-    title: "",
-    content: "",
-    isSubmitted: false,
-    userId: "",
-    userName: "",
-  });
+  // User's private drafting state
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isEditingAfterSubmit, setIsEditingAfterSubmit] = useState(false);
+  
+  // Topic creation modal/toggle
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [newPrompt, setNewPrompt] = useState("");
   const [newPromptDesc, setNewPromptDesc] = useState("");
@@ -91,7 +90,7 @@ export default function CirclePage() {
     fetchCircle();
   }, [id]);
 
-  // 2. Fetch Active Topic in this Circle
+  // 2. Fetch Active Topic for this Circle
   useEffect(() => {
     if (!id) return;
     const q = query(collection(db, "topics"), where("circleId", "==", id));
@@ -115,7 +114,11 @@ export default function CirclePage() {
       setEntries(allEntries);
 
       const mine = allEntries.find((e) => e.userId === user.uid);
-      if (mine) setMyEntry(mine);
+      if (mine) {
+        setTitle(mine.title || "");
+        setContent(mine.content || "");
+        setIsSubmitted(Boolean(mine.isSubmitted));
+      }
     });
     return () => unsubscribe();
   }, [activeTopic, user]);
@@ -131,7 +134,7 @@ export default function CirclePage() {
     return () => unsubscribe();
   }, [activeTopic?.isRevealed]);
 
-  // Handle text selection for notes
+  // Handle Highlight selection
   const handleTextSelection = (entryId: string) => {
     const selection = window.getSelection();
     const text = selection ? selection.toString().trim() : "";
@@ -141,6 +144,7 @@ export default function CirclePage() {
     }
   };
 
+  // Create a New Question/Prompt
   const handleCreateTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPrompt.trim() || !id) return;
@@ -158,6 +162,7 @@ export default function CirclePage() {
     setIsCreatingTopic(false);
   };
 
+  // Save / Submit Entry
   const handleSaveEntry = async (submit: boolean = false) => {
     if (!activeTopic || !user) return;
     setSaving(true);
@@ -168,16 +173,21 @@ export default function CirclePage() {
       circleId: id,
       userId: user.uid,
       userName: user.displayName || "Anonymous",
-      title: myEntry.title,
-      content: myEntry.content,
-      isSubmitted: submit ? true : myEntry.isSubmitted,
+      title: title.trim(),
+      content: content.trim(),
+      isSubmitted: submit ? true : isSubmitted,
       updatedAt: new Date(),
     };
 
     await setDoc(doc(db, "entries", entryId), entryData, { merge: true });
+    if (submit) {
+      setIsSubmitted(true);
+      setIsEditingAfterSubmit(false);
+    }
     setSaving(false);
   };
 
+  // Reveal the submissions to all members
   const handleReveal = async () => {
     if (!activeTopic) return;
     await updateDoc(doc(db, "topics", activeTopic.id), { isRevealed: true });
@@ -193,11 +203,12 @@ export default function CirclePage() {
 
   const submittedCount = entries.filter((e) => e.isSubmitted).length;
   const totalMembers = circle.members?.length || 1;
-  const wordCount = myEntry.content.trim() ? myEntry.content.trim().split(/\s+/).length : 0;
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const isRevealed = Boolean(activeTopic?.isRevealed);
 
   return (
     <div className="space-y-8">
-      {/* Top Bar */}
+      {/* Top Header */}
       <div className="flex items-center justify-between border-b border-stone-200 pb-4">
         <button
           onClick={() => router.push("/")}
@@ -218,7 +229,7 @@ export default function CirclePage() {
         )}
       </div>
 
-      {/* NO ACTIVE TOPIC */}
+      {/* NO TOPIC YET */}
       {!activeTopic && !isCreatingTopic && (
         <div className="border border-dashed border-stone-300 rounded-2xl p-10 text-center bg-white/40 space-y-4">
           <Feather className="mx-auto text-stone-400" size={24} />
@@ -287,6 +298,7 @@ export default function CirclePage() {
       {/* ACTIVE TOPIC PRESENT */}
       {activeTopic && (
         <div className="space-y-8">
+          {/* Active Prompt Box */}
           <div className="bg-[#F4EFE6] border border-stone-200/80 rounded-2xl p-6 space-y-4">
             <div className="flex justify-between items-start">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#C25E3E]">
@@ -305,7 +317,7 @@ export default function CirclePage() {
               )}
             </div>
 
-            {!activeTopic.isRevealed && (
+            {!isRevealed && (
               <div className="pt-2 flex justify-between items-center border-t border-stone-200/60 text-xs">
                 <span className="text-stone-500 italic">Submissions stay hidden until revealed.</span>
                 <button
@@ -318,9 +330,95 @@ export default function CirclePage() {
             )}
           </div>
 
-          {/* VIEW MODE: If Revealed */}
-          {activeTopic.isRevealed ? (
-            <div className="space-y-6">
+          {/* WRITING DESK (VISIBLE WHEN NOT SUBMITTED OR WHEN EDITING) */}
+          {(!isSubmitted || isEditingAfterSubmit) && (
+            <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
+              <div className="flex justify-between items-center pb-2 border-b border-stone-100">
+                <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
+                  Your Notebook Page
+                </span>
+                {isSubmitted && (
+                  <button
+                    onClick={() => setIsEditingAfterSubmit(false)}
+                    className="text-xs text-stone-500 hover:text-stone-800"
+                  >
+                    Cancel Editing
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Title of your thought..."
+                  className="w-full text-xl font-serif border-b border-stone-200 pb-2 focus:outline-none focus:border-[#C25E3E] placeholder:text-stone-300"
+                />
+
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Start scribbling your thoughts here... (only you can see this right now)"
+                  rows={8}
+                  className="w-full text-sm leading-relaxed border-none focus:outline-none resize-none placeholder:text-stone-300 placeholder:italic"
+                />
+
+                <div className="flex justify-between items-center pt-4 border-t border-stone-100 text-xs text-stone-400">
+                  <span>{wordCount} words</span>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleSaveEntry(false)}
+                      disabled={saving}
+                      className="text-stone-500 hover:text-stone-800"
+                    >
+                      {saving ? "Saving..." : "Save Draft"}
+                    </button>
+                    <button
+                      onClick={() => handleSaveEntry(true)}
+                      disabled={saving || !content.trim()}
+                      className="flex items-center gap-1.5 bg-[#1C1917] text-[#FBF9F5] px-4 py-2 rounded-xl hover:opacity-90 transition font-medium disabled:opacity-50"
+                    >
+                      <Send size={12} /> {isSubmitted ? "Update Submission" : "Submit"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SUBMITTED SUCCESS STATE (WHEN SUBMITTED AND NOT CURRENTLY EDITING) */}
+          {isSubmitted && !isEditingAfterSubmit && (
+            <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
+              <div className="py-4 text-center space-y-2">
+                <CheckCircle2 size={32} className="mx-auto text-green-600" />
+                <h3 className="font-serif text-lg text-[#1C1917]">Your entry is submitted!</h3>
+                <p className="text-xs text-stone-500 max-w-xs mx-auto">
+                  Your response is safely recorded. It will be revealed alongside everyone else's.
+                </p>
+                {!isRevealed && (
+                  <button
+                    onClick={() => setIsEditingAfterSubmit(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-[#C25E3E] hover:underline pt-2 font-medium"
+                  >
+                    <Edit3 size={13} /> Edit your response before reveal
+                  </button>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-stone-100 text-left">
+                <span className="text-[11px] uppercase tracking-wider text-stone-400 block mb-1 font-semibold">
+                  Your submission:
+                </span>
+                <h4 className="font-serif font-semibold text-stone-800">{title || "Untitled"}</h4>
+                <p className="text-xs text-stone-600 mt-2 line-clamp-4 italic whitespace-pre-wrap">"{content}"</p>
+              </div>
+            </div>
+          )}
+
+          {/* REVEALED ENTRIES */}
+          {isRevealed && (
+            <div className="space-y-6 pt-4">
               <div className="flex items-baseline justify-between border-b border-stone-200 pb-2">
                 <h3 className="font-serif text-xl text-[#1C1917]">
                   All Responses ({entries.length})
@@ -344,7 +442,6 @@ export default function CirclePage() {
                         <span className="text-xs text-stone-400">by {entry.userName}</span>
                       </div>
 
-                      {/* Text selection area */}
                       <div
                         onMouseUp={() => handleTextSelection(entry.id || "")}
                         className="text-stone-700 text-sm leading-relaxed whitespace-pre-wrap selection:bg-[#C25E3E]/20"
@@ -352,7 +449,6 @@ export default function CirclePage() {
                         {entry.content}
                       </div>
 
-                      {/* Floating Prompt Button to Add Thought */}
                       {selectedText && annotatingEntryId === entry.id && (
                         <div className="pt-2">
                           <button
@@ -365,7 +461,6 @@ export default function CirclePage() {
                         </div>
                       )}
 
-                      {/* Render Attached Annotations / Thoughts */}
                       {entryNotes.length > 0 && (
                         <div className="pt-4 mt-4 border-t border-stone-100 space-y-2.5">
                           <span className="text-[11px] uppercase tracking-wider font-semibold text-stone-400 block">
@@ -390,64 +485,6 @@ export default function CirclePage() {
                   );
                 })}
               </div>
-            </div>
-          ) : (
-            /* WRITING DESK: If Not Revealed Yet */
-            <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
-              {myEntry.isSubmitted ? (
-                <div className="py-8 text-center space-y-3">
-                  <CheckCircle2 size={36} className="mx-auto text-green-600" />
-                  <h3 className="font-serif text-xl text-[#1C1917]">You're all set!</h3>
-                  <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                    Your response is locked in the notebook. It will be revealed once the circle is ready.
-                  </p>
-                  <div className="pt-4 border-t border-stone-100 text-left">
-                    <span className="text-xs uppercase tracking-wider text-stone-400 block mb-1 font-semibold">
-                      Your submission:
-                    </span>
-                    <h4 className="font-serif font-semibold text-stone-800">{myEntry.title || "Untitled"}</h4>
-                    <p className="text-xs text-stone-600 mt-2 line-clamp-3 italic">"{myEntry.content}"</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    value={myEntry.title}
-                    onChange={(e) => setMyEntry({ ...myEntry, title: e.target.value })}
-                    placeholder="Title of your thought..."
-                    className="w-full text-xl font-serif border-b border-stone-200 pb-2 focus:outline-none focus:border-[#C25E3E] placeholder:text-stone-300"
-                  />
-
-                  <textarea
-                    value={myEntry.content}
-                    onChange={(e) => setMyEntry({ ...myEntry, content: e.target.value })}
-                    placeholder="Start scribbling your thoughts here..."
-                    rows={8}
-                    className="w-full text-sm leading-relaxed border-none focus:outline-none resize-none placeholder:text-stone-300 placeholder:italic"
-                  />
-
-                  <div className="flex justify-between items-center pt-4 border-t border-stone-100 text-xs text-stone-400">
-                    <span>{wordCount} words</span>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => handleSaveEntry(false)}
-                        disabled={saving}
-                        className="text-stone-500 hover:text-stone-800"
-                      >
-                        {saving ? "Saving..." : "Save Draft"}
-                      </button>
-                      <button
-                        onClick={() => handleSaveEntry(true)}
-                        disabled={saving || !myEntry.content.trim()}
-                        className="flex items-center gap-1.5 bg-[#1C1917] text-[#FBF9F5] px-4 py-2 rounded-xl hover:opacity-90 transition font-medium disabled:opacity-50"
-                      >
-                        <Send size={12} /> Submit
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
