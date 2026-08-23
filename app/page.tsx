@@ -29,7 +29,7 @@ export default function Home() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal & Form States
+  // Form states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [circleName, setCircleName] = useState("");
@@ -145,7 +145,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       {!user ? (
         <div className="text-center py-20 space-y-4">
           <Feather className="mx-auto text-stone-400" size={32} />
@@ -164,7 +164,6 @@ export default function Home() {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Action Row */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-serif text-2xl text-[#1C1917]">Your Circles</h2>
             <div className="flex items-center gap-2">
@@ -183,7 +182,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Form Modal / Inset: Create */}
+          {/* Form Modal: Create */}
           {isCreateOpen && (
             <form onSubmit={handleCreateCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Create New Circle</h3>
@@ -221,7 +220,7 @@ export default function Home() {
             </form>
           )}
 
-          {/* Form Modal / Inset: Join */}
+          {/* Form Modal: Join */}
           {isJoinOpen && (
             <form onSubmit={handleJoinCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Enter Invite Code</h3>
