@@ -31,7 +31,7 @@ export default function Home() {
 
   // Strict check: only true if email matches exactly
   const userEmail = (user?.email || "").toLowerCase().trim();
-  const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase().trim();
+  const isAdmin = Boolean(userEmail && userEmail === ADMIN_EMAIL.toLowerCase().trim());
 
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,7 +137,7 @@ export default function Home() {
 
   return (
     <div className="space-y-12 max-w-2xl mx-auto py-8">
-      {/* Top Header */}
+      {/* Header */}
       <header className="flex justify-between items-center border-b border-stone-200/80 pb-6">
         <div>
           <h1 className="font-serif text-3xl tracking-tight text-[#1C1917]">rpsyche</h1>
@@ -146,9 +146,9 @@ export default function Home() {
 
         <div>
           {user && (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <span className="text-xs text-stone-600">
-                {user.displayName || user.email}
+                {user.email} {isAdmin ? "(Admin)" : "(Member)"}
               </span>
               <button
                 onClick={logout}
@@ -161,7 +161,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Landing / Dashboard */}
       {!user ? (
         <div className="text-center py-20 space-y-4">
           <Feather className="mx-auto text-stone-400" size={32} />
@@ -197,7 +196,7 @@ export default function Home() {
               </button>
 
               {/* STRICT ADMIN ONLY BUTTON */}
-              {isAdmin === true && (
+              {isAdmin && (
                 <button
                   onClick={() => { setIsCreateOpen(true); setIsJoinOpen(false); setErrorMsg(""); }}
                   className="text-xs bg-[#1C1917] text-[#FBF9F5] px-3.5 py-2 rounded-xl hover:opacity-90 flex items-center gap-1.5 font-medium transition"
@@ -209,7 +208,7 @@ export default function Home() {
           </div>
 
           {/* Admin Form */}
-          {isAdmin === true && isCreateOpen && (
+          {isAdmin && isCreateOpen && (
             <form onSubmit={handleCreateCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Create New Circle</h3>
               <input
@@ -277,7 +276,7 @@ export default function Home() {
             </form>
           )}
 
-          {/* Circle Cards List */}
+          {/* Circles List */}
           {loading ? (
             <div className="text-center py-12 text-xs text-stone-400 font-serif italic">
               Loading circles...
