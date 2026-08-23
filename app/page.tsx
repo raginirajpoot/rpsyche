@@ -135,44 +135,44 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen py-10 px-4 sm:px-6 relative flex flex-col items-center">
-      {/* Top Right Corner Profile & Exit Button */}
-      {user && (
-        <div className="absolute top-6 right-6 flex items-center gap-3 z-50">
-          <span className="text-xs sm:text-sm text-stone-800 font-mono bg-white/40 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-sm">
-            {user.email} &bull; {isAdmin ? "ADMIN" : "MEMBER"}
-          </span>
-          <button
-            onClick={logout}
-            className="text-xs sm:text-sm text-stone-700 hover:text-stone-950 bg-white/40 hover:bg-white/60 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition"
-          >
-            <LogOut size={14} /> Exit
-          </button>
-        </div>
-      )}
-
-      {/* Main Transparent Container */}
-      <div className="w-full max-w-3xl bg-white/30 backdrop-blur-xl rounded-3xl p-8 sm:p-12 shadow-2xl space-y-12 text-center mt-6">
+    <div className="min-h-screen py-12 px-4 flex items-center justify-center">
+      <div className="w-full max-w-2xl bg-white/30 backdrop-blur-xl rounded-3xl p-8 sm:p-12 shadow-2xl space-y-10 text-center">
         
-        {/* Top Centered Header */}
-        <header className="space-y-2">
-          <h1 className="font-serif text-5xl sm:text-6xl tracking-tight text-[#1C1917] font-medium">
-            rpsyche
-          </h1>
-          <p className="text-base sm:text-lg text-stone-700 font-serif italic">
-            A shared journal for close minds
-          </p>
+        {/* Centered Masthead Header */}
+        <header className="space-y-3">
+          <div className="space-y-1">
+            <h1 className="font-serif text-5xl sm:text-6xl tracking-tight text-[#1C1917] font-medium">
+              rpsyche
+            </h1>
+            <p className="text-base sm:text-lg text-stone-700 font-serif italic">
+              A shared journal for close minds
+            </p>
+          </div>
+
+          {user && (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <span className="text-xs sm:text-sm text-stone-700 font-mono bg-white/50 px-3.5 py-1 rounded-full">
+                {user.email} &bull; {isAdmin ? "ADMIN" : "MEMBER"}
+              </span>
+              <button
+                onClick={logout}
+                className="text-xs sm:text-sm text-stone-600 hover:text-stone-900 bg-white/50 hover:bg-white/70 px-3.5 py-1 rounded-full flex items-center gap-1 transition"
+              >
+                <LogOut size={13} /> Exit
+              </button>
+            </div>
+          )}
         </header>
 
-        {/* Landing View (Pre-Login) */}
+        {/* Pre-Login Landing View */}
         {!user ? (
-          <div className="py-12 space-y-8 max-w-xl mx-auto">
-            <Feather className="mx-auto text-stone-600" size={44} />
-            <div className="space-y-3">
-              <h2 className="font-serif text-3xl sm:text-4xl text-stone-900 leading-snug">
+          <div className="py-8 space-y-6 max-w-lg mx-auto">
+            <Feather className="mx-auto text-stone-600" size={40} />
+            <div className="space-y-2">
+              <h2 className="font-serif text-3xl text-stone-900 leading-snug">
                 Your quiet writing room awaits
               </h2>
-              <p className="text-base sm:text-lg text-stone-700 leading-relaxed">
+              <p className="text-base text-stone-700 leading-relaxed">
                 Join a private circle to write answers to prompts blindly, revealing entries together when everyone finishes.
               </p>
             </div>
@@ -180,28 +180,25 @@ export default function Home() {
             <div className="pt-2">
               <button
                 onClick={handleLogin}
-                className="inline-flex items-center gap-2 bg-[#1C1917]/90 text-[#FBF9F5] text-base px-8 py-3.5 rounded-2xl hover:bg-[#1C1917] transition font-medium shadow-lg hover:scale-[1.02] transform"
+                className="inline-flex items-center gap-2 bg-[#1C1917]/90 text-[#FBF9F5] text-base px-8 py-3.5 rounded-2xl hover:bg-[#1C1917] transition font-medium shadow-md"
               >
                 <LogIn size={18} /> Sign In with Google
               </button>
             </div>
 
             {authError && (
-              <p className="text-sm text-red-600 max-w-sm mx-auto pt-2 bg-white/50 py-1.5 rounded-xl">
+              <p className="text-xs text-red-600 max-w-sm mx-auto pt-2">
                 {authError}
               </p>
             )}
           </div>
         ) : (
           /* Post-Login Centered Dashboard */
-          <div className="space-y-10">
-            {/* Action Bar */}
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <h2 className="font-serif text-3xl sm:text-4xl text-[#1C1917]">Your Circles</h2>
-                <p className="text-sm sm:text-base text-stone-700">Select a circle to read and submit reflections</p>
-              </div>
-
+          <div className="space-y-8">
+            <div className="space-y-3">
+              <h2 className="font-serif text-3xl text-[#1C1917]">Your Circles</h2>
+              <p className="text-sm sm:text-base text-stone-700">Select a circle to read and submit reflections</p>
+              
               <div className="flex items-center justify-center gap-3 pt-2">
                 <button
                   onClick={() => { setIsJoinOpen(true); setIsCreateOpen(false); setErrorMsg(""); }}
@@ -223,7 +220,7 @@ export default function Home() {
 
             {/* Admin Circle Creation Form */}
             {isAdmin && isCreateOpen && (
-              <form onSubmit={handleCreateCircle} className="bg-white/40 backdrop-blur-md rounded-2xl p-6 sm:p-8 space-y-4 shadow-lg max-w-xl mx-auto text-left">
+              <form onSubmit={handleCreateCircle} className="bg-white/50 backdrop-blur-md rounded-2xl p-6 sm:p-8 space-y-4 shadow-md max-w-xl mx-auto text-left">
                 <h3 className="font-serif text-xl font-semibold text-stone-900 text-center">Create New Circle</h3>
                 <input
                   type="text"
@@ -231,14 +228,14 @@ export default function Home() {
                   value={circleName}
                   onChange={(e) => setCircleName(e.target.value)}
                   required
-                  className="w-full px-4 py-3 text-base rounded-xl bg-white/70 border-none focus:outline-none focus:ring-2 focus:ring-stone-400 placeholder:text-stone-500"
+                  className="w-full px-4 py-3 text-base rounded-xl bg-white/80 border-none focus:outline-none focus:ring-2 focus:ring-stone-400 placeholder:text-stone-500"
                 />
                 <textarea
                   placeholder="Description / Purpose (optional)"
                   value={circleDesc}
                   onChange={(e) => setCircleDesc(e.target.value)}
                   rows={2}
-                  className="w-full px-4 py-3 text-base rounded-xl bg-white/70 border-none focus:outline-none focus:ring-2 focus:ring-stone-400 resize-none placeholder:text-stone-500"
+                  className="w-full px-4 py-3 text-base rounded-xl bg-white/80 border-none focus:outline-none focus:ring-2 focus:ring-stone-400 resize-none placeholder:text-stone-500"
                 />
                 {errorMsg && <p className="text-xs text-red-600 font-medium">{errorMsg}</p>}
                 <div className="flex justify-end gap-3 pt-1">
@@ -261,7 +258,7 @@ export default function Home() {
 
             {/* Member Join Form */}
             {isJoinOpen && (
-              <form onSubmit={handleJoinCircle} className="bg-white/40 backdrop-blur-md rounded-2xl p-6 sm:p-8 space-y-4 shadow-lg max-w-md mx-auto text-left">
+              <form onSubmit={handleJoinCircle} className="bg-white/50 backdrop-blur-md rounded-2xl p-6 sm:p-8 space-y-4 shadow-md max-w-md mx-auto text-left">
                 <h3 className="font-serif text-xl font-semibold text-stone-900 text-center">Enter Invite Code</h3>
                 <input
                   type="text"
@@ -269,7 +266,7 @@ export default function Home() {
                   value={inviteCodeInput}
                   onChange={(e) => setInviteCodeInput(e.target.value)}
                   required
-                  className="w-full px-4 py-3 text-base uppercase font-mono tracking-widest text-center rounded-xl bg-white/70 border-none focus:outline-none focus:ring-2 focus:ring-stone-400 placeholder:text-stone-500"
+                  className="w-full px-4 py-3 text-base uppercase font-mono tracking-widest text-center rounded-xl bg-white/80 border-none focus:outline-none focus:ring-2 focus:ring-stone-400 placeholder:text-stone-500"
                 />
                 {errorMsg && <p className="text-xs text-red-600 font-medium text-center">{errorMsg}</p>}
                 <div className="flex justify-end gap-3 pt-1">
@@ -292,20 +289,20 @@ export default function Home() {
 
             {/* Circle Cards List */}
             {loading ? (
-              <div className="text-center py-12 text-base text-stone-600 font-serif italic">
+              <div className="text-center py-8 text-base text-stone-600 font-serif italic">
                 Loading circles...
               </div>
             ) : circles.length === 0 ? (
-              <div className="rounded-2xl p-10 text-center bg-white/30 backdrop-blur-sm space-y-2 max-w-lg mx-auto">
+              <div className="rounded-2xl p-8 text-center bg-white/20 backdrop-blur-sm space-y-2 max-w-lg mx-auto">
                 <p className="font-serif text-xl text-stone-800">You are not in any circles yet.</p>
                 <p className="text-sm text-stone-600">Ask your circle host for their 6-digit invite code.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-5 text-left max-w-2xl mx-auto">
+              <div className="grid grid-cols-1 gap-4 text-left max-w-xl mx-auto">
                 {circles.map((c) => (
                   <div
                     key={c.id}
-                    className="bg-white/40 backdrop-blur-md rounded-2xl p-6 sm:p-7 hover:bg-white/60 transition space-y-4 shadow-sm group"
+                    className="bg-white/40 backdrop-blur-md rounded-2xl p-6 hover:bg-white/60 transition space-y-3 shadow-sm group"
                   >
                     <div className="flex justify-between items-start gap-4">
                       <div className="space-y-1">
@@ -313,23 +310,23 @@ export default function Home() {
                           {c.name}
                         </h3>
                         {c.description && (
-                          <p className="text-sm sm:text-base text-stone-700 leading-relaxed">{c.description}</p>
+                          <p className="text-sm text-stone-700 leading-relaxed">{c.description}</p>
                         )}
                       </div>
-                      <span className="text-xs font-mono text-stone-600 bg-white/60 px-3 py-1 rounded-lg shadow-xs">
+                      <span className="text-xs font-mono text-stone-600 bg-white/60 px-2.5 py-1 rounded-lg">
                         {c.inviteCode}
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center pt-2 text-sm">
+                    <div className="flex justify-between items-center pt-1 text-sm">
                       <span className="flex items-center gap-1.5 text-stone-600">
-                        <Users size={16} /> {c.members?.length || 1} member{c.members?.length === 1 ? "" : "s"}
+                        <Users size={15} /> {c.members?.length || 1} member{c.members?.length === 1 ? "" : "s"}
                       </span>
                       <Link
                         href={`/circle/${c.id}`}
-                        className="inline-flex items-center gap-1.5 text-stone-900 font-semibold hover:underline text-base"
+                        className="inline-flex items-center gap-1 text-stone-900 font-semibold hover:underline text-base"
                       >
-                        Open Circle <ArrowRight size={16} />
+                        Open Circle <ArrowRight size={15} />
                       </Link>
                     </div>
                   </div>
