@@ -1,0 +1,228 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { collection, query, where, getDocs, doc, getDoc, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { ArrowLeft, BookOpen, Calendar, ChevronDown, ChevronUp } from "lucide-react";
+
+interface Circle {
+  name: string;
+  inviteCode: string;
+}
+
+interface Topic {
+  id: string;
+  prompt: string;
+  description?: string;
+  isRevealed?: boolean;
+  createdAt: any;
+}
+
+interface Entry {
+  id: string;
+  title: string;
+  content: string;
+  userName: string;
+  topicId: string;
+}
+
+export default function ArchivePage() {
+  const { id } = useParams();
+  const router = useRouter();
+
+  const [circle, setCircle] = useState<Circle | null>(null);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [entriesByTopic, setEntriesByTopic] = useState<{ [key: string]: Entry[] }>({});
+  const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const fetchArchive = async () => {
+      // 1. Fetch circle
+      const circleDoc = await getDoc(doc(db, "circles", id as string));
+      if (circleDoc.exists()) {
+        setCircle(circleDoc.data() as Circle);
+      }
+
+      // 2. Fetch all revealed topics
+      const topicsQuery = query(
+        collection(db, "topics"),
+        where("circleId", "==", id),
+        where("isRevealed", "==", true)
+      );
+      const topicsSnap = await getDocs(topicsQuery);
+      const topicsList = topicsSnap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as Topic[];
+
+      // Sort by creation date descending
+      topicsList.sort((a, b) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setTopics(topicsList);
+
+      // 3. Fetch all entries for these topics
+      const entriesQuery = query(
+        collection(db, "entries"),
+        where("circleId", "==", id),
+        where("isSubmitted", "==", true)
+      );
+      const entriesSnap = await getDocs(entriesQuery);
+      
+      const grouped: { [key: string]: Entry[] } = {};
+      entriesSnap.docs.forEach((d) => {
+        const data = { id: d.id, ...d.data() } as Entry;
+        if (!grouped[data.topicId]) grouped[data.topicId] = [];
+        grouped[data.topicId].push(data);
+      });
+
+      setEntriesByTopic(grouped);
+      setLoading(false);
+    };
+
+    fetchArchive();
+  }, [id]);
+
+  const toggleTopic = (topicId: string) => {
+    setExpandedTopicId((prev) => (prev === topicId ? null : topicId));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <span className="italic text-stone-500 font-serif">Opening past chapters...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Navigation */}
+      <div className="flex items-center justify-between border-b border-stone-200 pb-4">
+        <button
+          onClick={() => router.push(`/circle/${id}`)}
+          className="flex items-center gap-2 text-xs text-stone-500 hover:text-stone-800 transition font-medium"
+        >
+          <ArrowLeft size={14} /> Back to Active Prompt
+        </button>
+        <span className="text-xs text-stone-400 uppercase tracking-widest font-mono">
+          {circle?.name}
+          {/* Circle Info */}
+<div className="space-y-1">
+  <div className="flex justify-between items-baseline">
+    <h1 className="font-serif text-3xl text-[#1C1917]">{circle.name}</h1>
+    <button
+      onClick={() => router.push(`/circle/${id}/archive`)}
+      className="text-xs text-[#C25E3E] hover:underline font-medium"
+    >
+      Past Chapters →
+    </button>
+  </div>
+  {circle.description && (
+    <p className="text-stone-500 text-sm leading-relaxed">{circle.description}</p>
+  )}
+</div>
+        </span>
+      </div>
+
+      {/* Header */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 text-[#C25E3E]">
+          <BookOpen size={20} />
+          <h1 className="font-serif text-3xl text-[#1C1917]">Past Chapters</h1>
+        </div>
+        <p className="text-stone-500 text-sm">
+          Archived questions and revealed entries from this circle.
+        </p>
+      </div>
+
+      {/* Archive List */}
+      {topics.length === 0 ? (
+        <div className="border border-dashed border-stone-300 rounded-2xl p-10 text-center bg-white/40 space-y-2">
+          <p className="italic text-stone-500 text-sm font-serif">
+            No past chapters recorded yet.
+          </p>
+          <p className="text-xs text-stone-400">
+            Once an active question is revealed, it will be preserved here in the circle archive.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {topics.map((t, idx) => {
+            const topicEntries = entriesByTopic[t.id] || [];
+            const isExpanded = expandedTopicId === t.id;
+            const dateStr = t.createdAt?.toDate 
+              ? t.createdAt.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+              : "Past Entry";
+
+            return (
+              <div
+                key={t.id}
+                className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm transition"
+              >
+                {/* Topic Header Accordion Button */}
+                <button
+                  onClick={() => toggleTopic(t.id)}
+                  className="w-full text-left p-6 flex items-start justify-between gap-4 hover:bg-stone-50/50 transition"
+                >
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2 text-[11px] text-stone-400 uppercase tracking-wider font-semibold">
+                      <Calendar size={12} />
+                      <span>{dateStr}</span>
+                      <span>•</span>
+                      <span>{topicEntries.length} {topicEntries.length === 1 ? "response" : "responses"}</span>
+                    </div>
+                    <h3 className="font-serif text-xl text-[#1C1917]">
+                      "{t.prompt}"
+                    </h3>
+                    {t.description && (
+                      <p className="text-xs text-stone-500 line-clamp-1 italic">
+                        {t.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-stone-400 pt-1">
+                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  </div>
+                </button>
+
+                {/* Expanded Entries */}
+                {isExpanded && (
+                  <div className="border-t border-stone-100 bg-[#FBF9F5]/40 p-6 space-y-6">
+                    {topicEntries.length === 0 ? (
+                      <p className="text-xs italic text-stone-400">No submissions were recorded for this topic.</p>
+                    ) : (
+                      topicEntries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="bg-white border border-stone-200/80 rounded-xl p-5 space-y-3"
+                        >
+                          <div className="flex justify-between items-baseline border-b border-stone-100 pb-2">
+                            <h4 className="font-serif font-semibold text-stone-900">
+                              {entry.title || "Untitled Thought"}
+                            </h4>
+                            <span className="text-xs text-stone-400">by {entry.userName}</span>
+                          </div>
+                          <p className="text-stone-700 text-sm leading-relaxed whitespace-pre-wrap">
+                            {entry.content}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
