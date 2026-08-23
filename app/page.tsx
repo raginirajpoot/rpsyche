@@ -28,11 +28,10 @@ interface Circle {
 
 export default function Home() {
   const { user, login, logout } = useAuth();
-  
-  // Strict admin check
-  const isAdmin = Boolean(
-    user?.email && user.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim()
-  );
+
+  // Strict check: only true if email matches exactly
+  const userEmail = (user?.email || "").toLowerCase().trim();
+  const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase().trim();
 
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,7 +161,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main View */}
+      {/* Main Landing / Dashboard */}
       {!user ? (
         <div className="text-center py-20 space-y-4">
           <Feather className="mx-auto text-stone-400" size={32} />
@@ -197,8 +196,8 @@ export default function Home() {
                 Join with Code
               </button>
 
-              {/* ONLY ADMIN SEES NEW CIRCLE BUTTON */}
-              {isAdmin && (
+              {/* STRICT ADMIN ONLY BUTTON */}
+              {isAdmin === true && (
                 <button
                   onClick={() => { setIsCreateOpen(true); setIsJoinOpen(false); setErrorMsg(""); }}
                   className="text-xs bg-[#1C1917] text-[#FBF9F5] px-3.5 py-2 rounded-xl hover:opacity-90 flex items-center gap-1.5 font-medium transition"
@@ -209,8 +208,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Admin Circle Creation Form */}
-          {isAdmin && isCreateOpen && (
+          {/* Admin Form */}
+          {isAdmin === true && isCreateOpen && (
             <form onSubmit={handleCreateCircle} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
               <h3 className="font-serif text-base font-semibold text-stone-800">Create New Circle</h3>
               <input
