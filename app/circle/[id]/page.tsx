@@ -16,7 +16,20 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import AnnotationModal from "@/app/components/AnnotationModal";
-import { ArrowLeft, Feather, Plus, Lock, CheckCircle2, Sparkles, Send, MessageSquareQuote, Edit3 } from "lucide-react";
+import CountdownTimer from "@/app/components/CountdownTimer";
+import { 
+  ArrowLeft, 
+  Feather, 
+  Plus, 
+  Lock, 
+  CheckCircle2, 
+  Sparkles, 
+  Send, 
+  MessageSquareQuote, 
+  Edit3, 
+  Clock, 
+  AlertTriangle 
+} from "lucide-react";
 
 interface Circle {
   name: string;
@@ -30,6 +43,7 @@ interface Topic {
   prompt: string;
   description?: string;
   isRevealed?: boolean;
+  deadline?: any;
   createdAt: any;
 }
 
@@ -59,19 +73,20 @@ export default function CirclePage() {
   const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [isWindowExpired, setIsWindowExpired] = useState(false);
   
   // Annotation state
   const [selectedText, setSelectedText] = useState("");
   const [annotatingEntryId, setAnnotatingEntryId] = useState<string | null>(null);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
 
-  // User's private drafting state
+  // User private drafting state
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isEditingAfterSubmit, setIsEditingAfterSubmit] = useState(false);
   
-  // Topic creation modal/toggle
+  // Topic creation state
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [newPrompt, setNewPrompt] = useState("");
   const [newPromptDesc, setNewPromptDesc] = useState("");
@@ -90,14 +105,26 @@ export default function CirclePage() {
     fetchCircle();
   }, [id]);
 
-  // 2. Fetch Active Topic for this Circle
+  // 2. Fetch Active Topic
   useEffect(() => {
     if (!id) return;
     const q = query(collection(db, "topics"), where("circleId", "==", id));
     const unsubscribe = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const docData = snap.docs[0];
-        setActiveTopic({ id: docData.id, ...docData.data() } as Topic);
+        const allTopics = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Topic[];
+        allTopics.sort((a, b) => {
+          const dateA = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+          const dateB = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+          return dateA - dateB;
+        });
+        const current = allTopics[0];
+        setActiveTopic(current);
+
+        // Check if 1-hour window has already passed
+        if (current.deadline) {
+          const deadlineMs = current.deadline?.toDate ? current.deadline.toDate().getTime() : new Date(current.deadline).getTime();
+          setIsWindowExpired(Date.now() > deadlineMs);
+        }
       } else {
         setActiveTopic(null);
       }
@@ -105,7 +132,7 @@ export default function CirclePage() {
     return () => unsubscribe();
   }, [id]);
 
-  // 3. Listen to Submissions for this Topic
+  // 3. Listen to Submissions
   useEffect(() => {
     if (!activeTopic || !user) return;
     const q = query(collection(db, "entries"), where("topicId", "==", activeTopic.id));
@@ -144,17 +171,22 @@ export default function CirclePage() {
     }
   };
 
-  // Create a New Question/Prompt
+  // Create New Question with Strict 1-Hour Deadline
   const handleCreateTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPrompt.trim() || !id) return;
+
+    const now = new Date();
+    // Exactly 60 minutes from now
+    const oneHourDeadline = new Date(now.getTime() + 60 * 60 * 1000);
 
     await addDoc(collection(db, "topics"), {
       circleId: id,
       prompt: newPrompt.trim(),
       description: newPromptDesc.trim(),
       isRevealed: false,
-      createdAt: new Date(),
+      deadline: oneHourDeadline,
+      createdAt: now,
     });
 
     setNewPrompt("");
@@ -164,7 +196,7 @@ export default function CirclePage() {
 
   // Save / Submit Entry
   const handleSaveEntry = async (submit: boolean = false) => {
-    if (!activeTopic || !user) return;
+    if (!activeTopic || !user || isWindowExpired) return;
     setSaving(true);
 
     const entryId = `${activeTopic.id}_${user.uid}`;
@@ -187,7 +219,7 @@ export default function CirclePage() {
     setSaving(false);
   };
 
-  // Reveal the submissions to all members
+  // Reveal Submissions
   const handleReveal = async () => {
     if (!activeTopic) return;
     await updateDoc(doc(db, "topics", activeTopic.id), { isRevealed: true });
@@ -208,7 +240,7 @@ export default function CirclePage() {
 
   return (
     <div className="space-y-8">
-      {/* Top Header */}
+      {/* Navigation Top Bar */}
       <div className="flex items-center justify-between border-b border-stone-200 pb-4">
         <button
           onClick={() => router.push("/")}
@@ -223,35 +255,49 @@ export default function CirclePage() {
 
       {/* Circle Info */}
       <div className="space-y-1">
-        <h1 className="font-serif text-3xl text-[#1C1917]">{circle.name}</h1>
+        <div className="flex justify-between items-baseline">
+          <h1 className="font-serif text-3xl text-[#1C1917]">{circle.name}</h1>
+          <button
+            onClick={() => router.push(`/circle/${id}/archive`)}
+            className="text-xs text-[#C25E3E] hover:underline font-medium"
+          >
+            Past Chapters →
+          </button>
+        </div>
         {circle.description && (
           <p className="text-stone-500 text-sm leading-relaxed">{circle.description}</p>
         )}
       </div>
 
-      {/* NO TOPIC YET */}
+      {/* NO ACTIVE QUESTION */}
       {!activeTopic && !isCreatingTopic && (
         <div className="border border-dashed border-stone-300 rounded-2xl p-10 text-center bg-white/40 space-y-4">
           <Feather className="mx-auto text-stone-400" size={24} />
           <div className="space-y-1">
             <h3 className="font-serif text-lg text-stone-700">No active prompt</h3>
             <p className="text-xs text-stone-500 max-w-xs mx-auto">
-              Pose a single question to your circle. Everyone writes blindly until revealed.
+              Pose a question. Circle members have exactly 1 hour to write their thoughts.
             </p>
           </div>
           <button
             onClick={() => setIsCreatingTopic(true)}
             className="inline-flex items-center gap-2 text-xs bg-[#1C1917] text-[#FBF9F5] px-4 py-2.5 rounded-xl hover:opacity-90 transition font-medium"
           >
-            <Plus size={14} /> Ask a Question
+            <Plus size={14} /> Pose 1-Hour Question
           </button>
         </div>
       )}
 
-      {/* CREATE TOPIC FORM */}
+      {/* QUESTION CREATION FORM */}
       {isCreatingTopic && (
         <form onSubmit={handleCreateTopic} className="bg-white border border-stone-200 rounded-2xl p-6 space-y-4 shadow-sm">
-          <h3 className="font-serif text-lg text-[#1C1917]">New Question for the Circle</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="font-serif text-lg text-[#1C1917]">New Question</h3>
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#C25E3E] bg-[#C25E3E]/10 px-2 py-0.5 rounded-full">
+              <Clock size={11} /> 1-Hour Writing Window
+            </span>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-stone-600 mb-1 uppercase tracking-wider">
               The Question / Prompt
@@ -260,23 +306,25 @@ export default function CirclePage() {
               type="text"
               value={newPrompt}
               onChange={(e) => setNewPrompt(e.target.value)}
-              placeholder="e.g. What does home mean to you?"
+              placeholder="e.g. What is one thing you believed five years ago that you no longer believe?"
               required
               className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#C25E3E]/30 focus:border-[#C25E3E]"
             />
           </div>
+
           <div>
             <label className="block text-xs font-semibold text-stone-600 mb-1 uppercase tracking-wider">
-              Optional Guidelines
+              Optional Context / Guidelines
             </label>
             <textarea
               value={newPromptDesc}
               onChange={(e) => setNewPromptDesc(e.target.value)}
-              placeholder="No rules. Just write whatever comes to mind."
+              placeholder="Write instinctively. Submissions lock in 60 minutes."
               rows={2}
               className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#C25E3E]/30 focus:border-[#C25E3E] resize-none"
             />
           </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -289,24 +337,31 @@ export default function CirclePage() {
               type="submit"
               className="px-4 py-2 text-xs bg-[#C25E3E] text-white rounded-lg hover:opacity-90 font-medium"
             >
-              Pose Question
+              Publish (Starts 1-Hr Timer)
             </button>
           </div>
         </form>
       )}
 
-      {/* ACTIVE TOPIC PRESENT */}
+      {/* ACTIVE TOPIC BANNER */}
       {activeTopic && (
         <div className="space-y-8">
-          {/* Active Prompt Box */}
           <div className="bg-[#F4EFE6] border border-stone-200/80 rounded-2xl p-6 space-y-4">
-            <div className="flex justify-between items-start">
+            <div className="flex flex-wrap justify-between items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[#C25E3E]">
                 Active Topic
               </span>
-              <div className="flex items-center gap-1.5 text-xs text-stone-600 bg-white/70 px-2.5 py-1 rounded-full border border-stone-200">
-                <Lock size={12} />
-                <span>{submittedCount} / {totalMembers} submitted</span>
+              <div className="flex items-center gap-2">
+                {activeTopic.deadline && (
+                  <CountdownTimer 
+                    deadline={activeTopic.deadline} 
+                    onExpire={() => setIsWindowExpired(true)} 
+                  />
+                )}
+                <div className="flex items-center gap-1.5 text-xs text-stone-600 bg-white/70 px-2.5 py-1 rounded-full border border-stone-200">
+                  <Lock size={12} />
+                  <span>{submittedCount} / {totalMembers} submitted</span>
+                </div>
               </div>
             </div>
 
@@ -317,25 +372,40 @@ export default function CirclePage() {
               )}
             </div>
 
-            {!isRevealed && (
-              <div className="pt-2 flex justify-between items-center border-t border-stone-200/60 text-xs">
-                <span className="text-stone-500 italic">Submissions stay hidden until revealed.</span>
+            <div className="pt-2 flex justify-between items-center border-t border-stone-200/60 text-xs">
+              <span className="text-stone-500 italic">
+                {isWindowExpired ? "1-Hour writing window has closed." : "1-Hour rapid writing window in progress."}
+              </span>
+              {!isRevealed && (
                 <button
                   onClick={handleReveal}
                   className="flex items-center gap-1.5 text-[#C25E3E] font-medium hover:underline"
                 >
-                  <Sparkles size={14} /> Reveal All ({submittedCount})
+                  <Sparkles size={14} /> Reveal Responses ({submittedCount})
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* WRITING DESK (VISIBLE WHEN NOT SUBMITTED OR WHEN EDITING) */}
-          {(!isSubmitted || isEditingAfterSubmit) && (
+          {/* WRITING WINDOW EXPIRED & NOT SUBMITTED */}
+          {isWindowExpired && !isSubmitted && !isRevealed && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center space-y-2">
+              <AlertTriangle size={24} className="mx-auto text-amber-700" />
+              <h3 className="font-serif text-base text-amber-950 font-medium">
+                The 1-hour writing window has closed
+              </h3>
+              <p className="text-xs text-amber-800 max-w-sm mx-auto">
+                The timer for this prompt expired. You will be able to read everyone's thoughts as soon as they are revealed!
+              </p>
+            </div>
+          )}
+
+          {/* ACTIVE WRITING DESK (ONLY WITHIN THE 1-HOUR WINDOW) */}
+          {!isWindowExpired && (!isSubmitted || isEditingAfterSubmit) && (
             <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
               <div className="flex justify-between items-center pb-2 border-b border-stone-100">
                 <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-                  Your Notebook Page
+                  Your Notebook Page (1-Hr Window Active)
                 </span>
                 {isSubmitted && (
                   <button
@@ -359,7 +429,7 @@ export default function CirclePage() {
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Start scribbling your thoughts here... (only you can see this right now)"
+                  placeholder="Write your instinctive reaction... (nobody can see this until revealed)"
                   rows={8}
                   className="w-full text-sm leading-relaxed border-none focus:outline-none resize-none placeholder:text-stone-300 placeholder:italic"
                 />
@@ -387,21 +457,21 @@ export default function CirclePage() {
             </div>
           )}
 
-          {/* SUBMITTED SUCCESS STATE (WHEN SUBMITTED AND NOT CURRENTLY EDITING) */}
+          {/* SUBMITTED CONFIRMATION */}
           {isSubmitted && !isEditingAfterSubmit && (
             <div className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
               <div className="py-4 text-center space-y-2">
                 <CheckCircle2 size={32} className="mx-auto text-green-600" />
                 <h3 className="font-serif text-lg text-[#1C1917]">Your entry is submitted!</h3>
                 <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                  Your response is safely recorded. It will be revealed alongside everyone else's.
+                  Your entry is locked in. It will be viewable when the responses are revealed.
                 </p>
-                {!isRevealed && (
+                {!isRevealed && !isWindowExpired && (
                   <button
                     onClick={() => setIsEditingAfterSubmit(true)}
                     className="inline-flex items-center gap-1.5 text-xs text-[#C25E3E] hover:underline pt-2 font-medium"
                   >
-                    <Edit3 size={13} /> Edit your response before reveal
+                    <Edit3 size={13} /> Edit response while timer is ticking
                   </button>
                 )}
               </div>
@@ -416,7 +486,7 @@ export default function CirclePage() {
             </div>
           )}
 
-          {/* REVEALED ENTRIES */}
+          {/* REVEALED ENTRIES (ALWAYS PERMANENTLY VIEWABLE) */}
           {isRevealed && (
             <div className="space-y-6 pt-4">
               <div className="flex items-baseline justify-between border-b border-stone-200 pb-2">
