@@ -48,6 +48,7 @@ export default function Home() {
     try {
       await login();
     } catch (err: any) {
+      console.error("Login error:", err);
       setAuthError(err?.message || "Sign in failed. Please try again.");
     }
   };
