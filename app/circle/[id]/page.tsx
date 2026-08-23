@@ -1,17 +1,490 @@
-const handleCreatePrompt = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!newPromptText.trim() || !circleId) return;
+"use client";
 
-  const now = new Date();
-  const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour duration
+import { useEffect, useState, useMemo } from "react";
+import { useParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/lib/firebase";
+import {
+  doc,
+  collection,
+  query,
+  onSnapshot,
+  addDoc,
+  setDoc,
+  updateDoc,
+  orderBy
+} from "firebase/firestore";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Clock,
+  Send,
+  EyeOff,
+  Eye,
+  CheckCircle2,
+  Lock,
+  Archive,
+  Sparkles,
+  Plus
+} from "lucide-react";
 
-  await addDoc(collection(db, "circles", circleId, "prompts"), {
-    text: newPromptText.trim(),
-    createdAt: now,
-    expiresAt: oneHourLater,
-    status: "active", // "active" | "archived"
-    createdBy: user.uid,
-  });
+const ADMIN_EMAIL = "raginirajpoot13@gmail.com";
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
-  setNewPromptText("");
-};
+interface Circle {
+  id: string;
+  name: string;
+  description?: string;
+  inviteCode: string;
+  members: string[];
+  createdBy: string;
+}
+
+interface Prompt {
+  id: string;
+  text: string;
+  createdAt: any;
+  status: "active" | "archived";
+  createdBy: string;
+}
+
+interface Submission {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  content: string;
+  submittedAt: any;
+}
+
+function getTimestampMs(val: any): number {
+  if (!val) return 0;
+  if (typeof val.toMillis === "function") return val.toMillis();
+  if (typeof val.toDate === "function") return val.toDate().getTime();
+  if (val instanceof Date) return val.getTime();
+  if (typeof val === "number") return val;
+  const parsed = new Date(val).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+function PromptCountdown({
+  createdAt,
+  onExpire
+}: {
+  createdAt: any;
+  onExpire: () => void;
+}) {
+  const [timeLeft, setTimeLeft] = useState<string>("");
+
+  useEffect(() => {
+    const createdMs = getTimestampMs(createdAt);
+    if (!createdMs) {
+      setTimeLeft("00:00");
+      onExpire();
+      return;
+    }
+
+    const expiryMs = createdMs + ONE_HOUR_MS;
+
+    const updateTimer = () => {
+      const remaining = expiryMs - Date.now();
+      if (remaining <= 0) {
+        setTimeLeft("00:00");
+        onExpire();
+      } else {
+        const mins = Math.floor(remaining / (1000 * 60));
+        const secs = Math.floor((remaining / 1000) % 60);
+        setTimeLeft(`${mins}m ${secs < 10 ? "0" : ""}${secs}s`);
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [createdAt, onExpire]);
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-mono text-[#C25E3E] bg-[#FAF7F2] border border-[#C25E3E]/20 px-2.5 py-1 rounded-md">
+      <Clock size={12} /> {timeLeft || "Calculating..."}
+    </span>
+  );
+}
+
+export default function CircleDetailPage() {
+  const params = useParams();
+  const circleId = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const { user } = useAuth();
+
+  const userEmail = (user?.email || "").toLowerCase().trim();
+  const isAdmin = userEmail !== "" && userEmail === ADMIN_EMAIL.toLowerCase().trim();
+
+  const [circle, setCircle] = useState<Circle | null>(null);
+  const [allPrompts, setAllPrompts] = useState<Prompt[]>([]);
+  const [submissions, setSubmissions] = useState<Record<string, Submission[]>>({});
+  const [myResponses, setMyResponses] = useState<Record<string, string>>({});
+  const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
+
+  const [newPromptText, setNewPromptText] = useState("");
+  const [isCreatingPrompt, setIsCreatingPrompt] = useState(false);
+  const [submittingMap, setSubmittingMap] = useState<Record<string, boolean>>({});
+  const [feedbackMsg, setFeedbackMsg] = useState("");
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTimestamp(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!circleId) return;
+    const unsubscribe = onSnapshot(doc(db, "circles", circleId), (docSnap) => {
+      if (docSnap.exists()) {
+        setCircle({ id: docSnap.id, ...docSnap.data() } as Circle);
+      }
+    });
+    return () => unsubscribe();
+  }, [circleId]);
+
+  useEffect(() => {
+    if (!circleId) return;
+
+    const promptsRef = collection(db, "circles", circleId, "prompts");
+    const q = query(promptsRef, orderBy("createdAt", "desc"));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetched: Prompt[] = [];
+      snapshot.forEach((promptDoc) => {
+        fetched.push({ id: promptDoc.id, ...promptDoc.data() } as Prompt);
+      });
+      setAllPrompts(fetched);
+    });
+
+    return () => unsubscribe();
+  }, [circleId]);
+
+  const { activePrompts, archivedPrompts } = useMemo(() => {
+    const active: Prompt[] = [];
+    const archived: Prompt[] = [];
+
+    allPrompts.forEach((p) => {
+      const createdMs = getTimestampMs(p.createdAt);
+      const isExpired = createdMs === 0 || nowTimestamp - createdMs >= ONE_HOUR_MS;
+
+      if (p.status === "archived" || isExpired) {
+        archived.push(p);
+      } else {
+        active.push(p);
+      }
+    });
+
+    return { activePrompts: active, archivedPrompts: archived };
+  }, [allPrompts, nowTimestamp]);
+
+  useEffect(() => {
+    if (!circleId || allPrompts.length === 0) return;
+
+    const unsubscribers = allPrompts.map((p) => {
+      const subRef = collection(db, "circles", circleId, "prompts", p.id, "submissions");
+      return onSnapshot(subRef, (snap) => {
+        const subs: Submission[] = [];
+        snap.forEach((d) => {
+          subs.push({ id: d.id, ...d.data() } as Submission);
+        });
+        setSubmissions((prev) => ({ ...prev, [p.id]: subs }));
+      });
+    });
+
+    return () => unsubscribers.forEach((u) => u());
+  }, [circleId, allPrompts]);
+
+  const handleCreatePrompt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPromptText.trim() || !circleId || !user || !isAdmin) return;
+
+    try {
+      await addDoc(collection(db, "circles", circleId, "prompts"), {
+        text: newPromptText.trim(),
+        createdAt: new Date(),
+        status: "active",
+        createdBy: user.uid
+      });
+      setNewPromptText("");
+      setIsCreatingPrompt(false);
+    } catch (err: any) {
+      setFeedbackMsg(err?.message || "Failed to create prompt");
+    }
+  };
+
+  const handleSubmitResponse = async (promptId: string) => {
+    const text = myResponses[promptId];
+    if (!text?.trim() || !circleId || !user) return;
+
+    setSubmittingMap((prev) => ({ ...prev, [promptId]: true }));
+    try {
+      const subDocRef = doc(db, "circles", circleId, "prompts", promptId, "submissions", user.uid);
+      await setDoc(subDocRef, {
+        userId: user.uid,
+        userEmail: user.email,
+        userName: user.displayName || user.email?.split("@")[0] || "Anonymous",
+        content: text.trim(),
+        submittedAt: new Date()
+      });
+      setFeedbackMsg("Response saved successfully.");
+      setTimeout(() => setFeedbackMsg(""), 3000);
+    } catch (err: any) {
+      setFeedbackMsg(err?.message || "Failed to submit response");
+    } finally {
+      setSubmittingMap((prev) => ({ ...prev, [promptId]: false }));
+    }
+  };
+
+  const handleExpirePrompt = async (promptId: string) => {
+    if (!circleId) return;
+    try {
+      await updateDoc(doc(db, "circles", circleId, "prompts", promptId), {
+        status: "archived"
+      });
+    } catch {
+      // Handled in client state
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 space-y-8 font-sans">
+      <header className="flex items-center justify-between border-b border-stone-200 pb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-800 transition"
+        >
+          <ArrowLeft size={14} /> Back to Circles
+        </Link>
+        {circle && (
+          <span className="text-xs font-mono bg-stone-100 text-stone-600 px-2 py-0.5 rounded border border-stone-200">
+            Invite: {circle.inviteCode}
+          </span>
+        )}
+      </header>
+
+      {circle && (
+        <div className="space-y-2">
+          <h1 className="font-serif text-3xl font-normal text-[#1C1917]">
+            {circle.name}
+          </h1>
+          {circle.description && (
+            <p className="text-xs text-stone-500 leading-relaxed">
+              {circle.description}
+            </p>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="space-y-3">
+          {!isCreatingPrompt ? (
+            <button
+              onClick={() => setIsCreatingPrompt(true)}
+              className="text-xs bg-[#1C1917] text-[#FBF9F5] px-4 py-2 rounded-xl font-medium hover:opacity-90 flex items-center gap-1.5 transition"
+            >
+              <Plus size={14} /> Post New Topic
+            </button>
+          ) : (
+            <form onSubmit={handleCreatePrompt} className="bg-white border border-stone-200 rounded-2xl p-5 space-y-3 shadow-sm">
+              <h3 className="font-serif text-sm font-semibold text-stone-800">
+                Post 1-Hour Timed Topic
+              </h3>
+              <textarea
+                placeholder="What is the prompt or question for the circle?"
+                value={newPromptText}
+                onChange={(e) => setNewPromptText(e.target.value)}
+                required
+                rows={3}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#C25E3E] resize-none"
+              />
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingPrompt(false)}
+                  className="px-3 py-1.5 text-xs text-stone-500 hover:text-stone-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs bg-[#1C1917] text-[#FBF9F5] rounded-xl font-medium hover:opacity-90"
+                >
+                  Start 1-Hour Topic
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
+      {feedbackMsg && (
+        <p className="text-xs text-stone-600 bg-stone-100 p-2.5 rounded-xl border border-stone-200">
+          {feedbackMsg}
+        </p>
+      )}
+
+      {/* Active Prompts */}
+      <section className="space-y-4">
+        <h2 className="font-serif text-xl text-[#1C1917] flex items-center gap-2">
+          <Sparkles size={16} className="text-[#C25E3E]" /> Active Topic
+        </h2>
+
+        {activePrompts.length === 0 ? (
+          <div className="border border-dashed border-stone-300 bg-white/40 rounded-2xl p-8 text-center space-y-1">
+            <p className="font-serif text-stone-600">No active prompt right now.</p>
+            <p className="text-xs text-stone-400">
+              {isAdmin
+                ? "Click 'Post New Topic' above to set a 1-hour prompt."
+                : "Your circle host will post a new topic soon."}
+            </p>
+          </div>
+        ) : (
+          activePrompts.map((p) => {
+            const promptSubs = submissions[p.id] || [];
+            const mySub = promptSubs.find((s) => s.userId === user?.uid);
+
+            return (
+              <div
+                key={p.id}
+                className="bg-white border border-stone-200 rounded-2xl p-6 space-y-5 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 pb-4">
+                  <div className="space-y-1 max-w-md">
+                    <span className="text-[10px] tracking-widest uppercase font-mono text-stone-400">
+                      Current Prompt
+                    </span>
+                    <h3 className="font-serif text-lg font-medium text-stone-900 leading-snug">
+                      {p.text}
+                    </h3>
+                  </div>
+                  <PromptCountdown
+                    createdAt={p.createdAt}
+                    onExpire={() => handleExpirePrompt(p.id)}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-medium text-stone-700 block">
+                    {mySub ? "Your Submission (Saved)" : "Your Answer (Blind until time ends)"}
+                  </label>
+                  <textarea
+                    placeholder="Write your reflection here... entries remain completely hidden from others until 1 hour passes."
+                    defaultValue={mySub?.content || ""}
+                    onChange={(e) =>
+                      setMyResponses((prev) => ({ ...prev, [p.id]: e.target.value }))
+                    }
+                    rows={4}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[#C25E3E] resize-none leading-relaxed"
+                  />
+
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-[11px] text-stone-400 flex items-center gap-1">
+                      {mySub ? (
+                        <span className="text-emerald-700 flex items-center gap-1 font-medium">
+                          <CheckCircle2 size={13} /> Response submitted
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1">
+                          <EyeOff size={13} /> Encrypted &amp; hidden
+                        </span>
+                      )}
+                    </span>
+
+                    <button
+                      onClick={() => handleSubmitResponse(p.id)}
+                      disabled={submittingMap[p.id]}
+                      className="bg-[#1C1917] text-[#FBF9F5] text-xs px-4 py-2 rounded-xl font-medium hover:opacity-90 transition flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Send size={12} /> {mySub ? "Update Draft" : "Submit Answer"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500">
+                  <span>
+                    {promptSubs.length} of {circle?.members?.length || 1} submitted
+                  </span>
+                  <span className="flex items-center gap-1 text-stone-400">
+                    <Lock size={12} /> Entries unlock upon 1-hour expiry
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+
+      {/* Archive */}
+      <section className="space-y-4 pt-6 border-t border-stone-200">
+        <h2 className="font-serif text-xl text-[#1C1917] flex items-center gap-2">
+          <Archive size={16} className="text-stone-400" /> Archive ({archivedPrompts.length})
+        </h2>
+
+        {archivedPrompts.length === 0 ? (
+          <p className="text-xs text-stone-400 font-serif italic">
+            No archived prompts yet. Prompts automatically move here after 1 hour.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {archivedPrompts.map((p) => {
+              const promptSubs = submissions[p.id] || [];
+
+              return (
+                <div
+                  key={p.id}
+                  className="bg-white border border-stone-200 rounded-2xl p-5 space-y-4 shadow-sm"
+                >
+                  <div className="flex justify-between items-start gap-2 border-b border-stone-100 pb-3">
+                    <div>
+                      <span className="text-[10px] font-mono text-stone-400 uppercase">
+                        Archived Topic
+                      </span>
+                      <h4 className="font-serif text-base text-stone-900 font-medium mt-0.5">
+                        {p.text}
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-mono text-stone-500 bg-stone-100 px-2 py-0.5 rounded">
+                      Revealed
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 pt-1">
+                    <p className="text-[11px] font-medium text-stone-500 uppercase tracking-wider flex items-center gap-1">
+                      <Eye size={12} /> Revealed Entries ({promptSubs.length})
+                    </p>
+
+                    {promptSubs.length === 0 ? (
+                      <p className="text-xs text-stone-400 italic">
+                        No submissions recorded for this prompt.
+                      </p>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {promptSubs.map((sub) => (
+                          <div
+                            key={sub.id}
+                            className="bg-[#FAF9F5] border border-stone-200/80 rounded-xl p-4 space-y-1.5"
+                          >
+                            <div className="flex justify-between items-center text-[11px] text-stone-500">
+                              <span className="font-medium text-stone-800">
+                                {sub.userName}
+                              </span>
+                            </div>
+                            <p className="font-serif text-xs text-stone-800 leading-relaxed whitespace-pre-wrap">
+                              {sub.content}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
